@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Морской бой</title>
+<style>
+:root{--bg:#e8efee;--card:#f8fbfa;--tx:#12304a;--mut:#58708a;--water:#cfe1e3;--line:#a9c5ca;--ship:#12304a;--hit:#e8590c;--miss:#6f8fa3;--acc:#12304a;--onacc:#f8fbfa;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#061820;--card:#0c2530;--tx:#e3f1f1;--mut:#86a6b3;--water:#0f3342;--line:#1d4c60;--ship:#8fd3d6;--hit:#ff7a2e;--miss:#4d7486;--acc:#8fd3d6;--onacc:#061820}}
+:root[data-theme="dark"]{--bg:#061820;--card:#0c2530;--tx:#e3f1f1;--mut:#86a6b3;--water:#0f3342;--line:#1d4c60;--ship:#8fd3d6;--hit:#ff7a2e;--miss:#4d7486;--acc:#8fd3d6;--onacc:#061820}
+html,body{height:auto;margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+main{max-width:860px;margin:0 auto}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font:700 30px/1.1 Georgia,"Times New Roman",serif;margin:0}
+.cup{font-weight:600;color:var(--mut)}
+#msg{margin:14px 0;padding:12px 14px;background:var(--card);border-left:4px solid var(--hit);border-radius:4px;min-height:24px;font-weight:600}
+.boards{display:flex;flex-wrap:wrap;gap:20px;justify-content:center}
+.b{flex:1 1 300px;max-width:400px}
+.b h2{font-size:15px;margin:0 0 6px;color:var(--mut);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;background:var(--line);border:2px solid var(--line);border-radius:4px}
+.c{aspect-ratio:1;background:var(--water);position:relative;padding:0;border:0;font:inherit}
+.c.s{background:var(--ship)}
+.c.m::after{content:"";position:absolute;inset:38%;border-radius:50%;background:var(--miss)}
+.c.h::after{content:"✕";position:absolute;inset:0;display:grid;place-items:center;color:var(--hit);font-weight:900;font-size:clamp(18px,7vw,32px)}
+.c.s.h{background:var(--ship)}
+#en .c:not(.m):not(.h){cursor:pointer}
+#en.off .c{cursor:default}
+.btns{display:flex;gap:10px;justify-content:center;margin-top:18px;flex-wrap:wrap}
+button.btn{background:var(--acc);color:var(--onacc);border:0;border-radius:6px;padding:12px 18px;font:600 15px system-ui,sans-serif;cursor:pointer}
+button.btn.ghost{background:transparent;color:var(--tx);border:2px solid var(--line)}
+button.btn:disabled{opacity:.4;cursor:default}
+button:focus-visible{outline:3px solid var(--hit);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<header><h1>Морской бой</h1><div class="cup">Тренировка с компьютером</div></header>
+<div id="msg"></div>
+<div class="boards">
+<section class="b"><h2>Ваш флот</h2><div id="me" class="grid"></div></section>
+<section class="b"><h2>Море противника</h2><div id="en" class="grid"></div></section>
+</div>
+<div class="btns">
+<button class="btn ghost" id="re">Расставить заново</button>
+<button class="btn" id="new">Новая игра</button>
+</div>
+</main>
+<script>
+const N=6,SIZES=[3,2,2,1,1];
+let me,en,turn,over,started;
+const $=id=>document.getElementById(id);
+
+function around(x){const r=x/N|0,c=x%N,a=[];for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){const rr=r+i,cc=c+j;if((i||j)&&rr>=0&&rr<N&&cc>=0&&cc<N)a.push(rr*N+cc)}return a}
+function free(g,x){return !g[x]&&!around(x).some(a=>g[a])}
+function mk(){
+  for(;;){
+    const g=Array(N*N).fill(0),ships=[];let ok=true;
+    for(const s of SIZES){
+      let placed=false;
+      for(let t=0;t<200&&!placed;t++){
+        const h=Math.random()<.5,r=Math.random()*N|0,c=Math.random()*N|0;
+        if(h?c+s>N:r+s>N)continue;
+        const cells=[];for(let i=0;i<s;i++)cells.push(h?r*N+c+i:(r+i)*N+c);
+        if(cells.every(x=>free(g,x))){cells.forEach(x=>g[x]=1);ships.push({cells,hits:0});placed=true}
+      }
+      if(!placed){ok=false;break}
+    }
+    if(ok)return{g,ships,sh:Array(N*N).fill(0)};
+  }
+}
+function shoot(b,x){
+  b.sh[x]=b.g[x]?2:1;
+  if(!b.g[x])return 0;
+  const s=b.ships.find(s=>s.cells.includes(x));s.hits++;
+  if(s.hits===s.cells.length){s.cells.forEach(c=>around(c).forEach(a=>{if(!b.sh[a])b.sh[a]=1}));return 2}
+  return 1;
+}
+const dead=b=>b.ships.every(s=>s.hits===s.cells.length);
+
+function draw(b,el,showShips){
+  el.innerHTML="";
+  b.g.forEach((v,i)=>{
+    const d=document.createElement(showShips?"div":"button");
+    d.className="c"+(showShips&&v?" s":"")+(b.sh[i]===1?" m":"")+(b.sh[i]===2?" h":"");
+    if(!showShips){d.setAttribute("aria-label","Клетка "+(i+1));d.onclick=()=>fire(i)}
+    el.appendChild(d);
+  });
+}
+function render(){draw(me,$("me"),true);draw(en,$("en"),false);$("en").classList.toggle("off",over||turn!=="me")}
+function say(t){$("msg").textContent=t}
+
+function start(){
+  me=mk();en=mk();turn="me";over=false;started=false;
+  $("re").disabled=false;render();say("Ваш ход. Нажмите на клетку в море противника.");
+}
+function fire(x){
+  if(over||turn!=="me"||en.sh[x])return;
+  started=true;$("re").disabled=true;
+  const r=shoot(en,x);
+  if(dead(en)){over=true;render();say("Победа! Все корабли противника потоплены. Кубки дают только за онлайн-игры.");return}
+  if(r===0){turn="cpu";render();say("Мимо. Ход компьютера…");setTimeout(cpu,450)}
+  else{render();say(r===2?"Корабль потоплен! Стреляйте ещё.":"Попадание! Стреляйте ещё.")}
+}
+function pick(){
+  const b=me,hits=[];
+  b.sh.forEach((v,i)=>{if(v===2){const s=b.ships.find(s=>s.cells.includes(i));if(s.hits<s.cells.length)hits.push(i)}});
+  if(hits.length){
+    let cand=[];
+    const ortho=x=>[x-N,x+N,x%N>0?x-1:-1,x%N<N-1?x+1:-1].filter(a=>a>=0&&a<N*N&&!b.sh[a]);
+    if(hits.length>1){
+      const horiz=(hits[0]/N|0)===(hits[1]/N|0);
+      hits.forEach(h=>ortho(h).forEach(a=>{if(horiz?(a/N|0)===(h/N|0):a%N===h%N)cand.push(a)}));
+    }
+    if(!cand.length)hits.forEach(h=>cand.push(...ortho(h)));
+    if(cand.length)return cand[Math.random()*cand.length|0];
+  }
+  const f=[];b.sh.forEach((v,i)=>{if(!v)f.push(i)});
+  const par=f.filter(i=>((i/N|0)+i%N)%2===0);
+  const pool=par.length?par:f;
+  return pool[Math.random()*pool.length|0];
+}
+function cpu(){
+  if(over)return;
+  const r=shoot(me,pick());
+  render();
+  if(dead(me)){over=true;render();say("Поражение. Компьютер потопил весь ваш флот. Попробуйте ещё раз!");return}
+  if(r>0){say(r===2?"Компьютер потопил ваш корабль и стреляет снова…":"Компьютер попал и стреляет снова…");setTimeout(cpu,450)}
+  else{turn="me";render();say("Компьютер промахнулся. Ваш ход.")}
+}
+$("new").onclick=start;
+$("re").onclick=()=>{if(!started){me=mk();render()}};
+start();
+</script>
+</body>
+</html>
